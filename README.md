@@ -62,6 +62,6 @@ dotnet test TransactionsIngest.slnx
 
 - Estimated hours: `TBD`
 - Actual hours: `TBD`
-=======
+
 # Transactions-ingest
 >>>>>>> 
