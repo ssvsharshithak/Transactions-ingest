@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Transactions Ingest (Coding Exercise)
 
 Console application for hourly transaction ingestion with EF Core + SQLite.
@@ -61,3 +62,6 @@ dotnet test TransactionsIngest.slnx
 
 - Estimated hours: `TBD`
 - Actual hours: `TBD`
+=======
+# Transactions-ingest
+>>>>>>> 2ea6cce03cc94fcbcd4a4d55f01a6eafd4568fa5
