@@ -64,4 +64,4 @@ dotnet test TransactionsIngest.slnx
 - Actual hours: `TBD`
 =======
 # Transactions-ingest
->>>>>>> 2ea6cce03cc94fcbcd4a4d55f01a6eafd4568fa5
+>>>>>>> 
