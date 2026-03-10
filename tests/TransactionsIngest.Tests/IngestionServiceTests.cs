@@ -157,6 +157,142 @@ public sealed class IngestionServiceTests
         Assert.Equal("IsFinalized", finalizeRevision.FieldName);
     }
 
+    [Fact]
+    public async Task RunOnce_UnrevokesTransaction_WhenItReappearsInSnapshot()
+    {
+        var now = new DateTime(2026, 3, 9, 12, 0, 0, DateTimeKind.Utc);
+        await using var fixture = await TestFixture.CreateAsync(new FakeClock(now));
+
+        // Seed a previously-revoked transaction within the 24-hour window.
+        fixture.Db.Transactions.Add(new Transaction
+        {
+            TransactionId = "T-4001",
+            CardLast4 = "1111",
+            LocationCode = "STO-20",
+            ProductName = "Headphones",
+            Amount = 59.99m,
+            TransactionTimeUtc = now.AddHours(-2),
+            IsRevoked = true,
+            IsFinalized = false,
+            FirstSeenAtUtc = now.AddHours(-3),
+            LastSeenAtUtc = now.AddHours(-3)
+        });
+        await fixture.Db.SaveChangesAsync();
+
+        // Transaction reappears in the new snapshot.
+        fixture.SnapshotClient.SetData(
+        [
+            new SnapshotTransaction
+            {
+                TransactionId = "T-4001",
+                CardNumber = "4111111111111111",
+                LocationCode = "STO-20",
+                ProductName = "Headphones",
+                Amount = 59.99m,
+                Timestamp = now.AddHours(-2)
+            }
+        ]);
+
+        var result = await fixture.Service.RunOnceAsync();
+
+        Assert.Equal(1, result.Updated);
+
+        var stored = await fixture.Db.Transactions.SingleAsync(x => x.TransactionId == "T-4001");
+        Assert.False(stored.IsRevoked);
+
+        var unRevokeRevision = await fixture.Db.TransactionRevisions
+            .SingleAsync(x => x.TransactionId == "T-4001" && x.FieldName == "IsRevoked");
+        Assert.Equal("Updated", unRevokeRevision.ChangeType);
+        Assert.Equal("true", unRevokeRevision.OldValue);
+        Assert.Equal("false", unRevokeRevision.NewValue);
+    }
+
+    [Fact]
+    public async Task RunOnce_SkipsFinalizedTransaction_EvenWhenItReappearsInSnapshot()
+    {
+        var now = new DateTime(2026, 3, 9, 12, 0, 0, DateTimeKind.Utc);
+        await using var fixture = await TestFixture.CreateAsync(new FakeClock(now));
+
+        // Seed a finalized transaction.
+        fixture.Db.Transactions.Add(new Transaction
+        {
+            TransactionId = "T-5001",
+            CardLast4 = "2222",
+            LocationCode = "STO-30",
+            ProductName = "Webcam",
+            Amount = 45.00m,
+            TransactionTimeUtc = now.AddHours(-30),
+            IsRevoked = false,
+            IsFinalized = true,
+            FirstSeenAtUtc = now.AddHours(-30),
+            LastSeenAtUtc = now.AddHours(-30)
+        });
+        await fixture.Db.SaveChangesAsync();
+
+        // Same transaction reappears with a changed amount.
+        fixture.SnapshotClient.SetData(
+        [
+            new SnapshotTransaction
+            {
+                TransactionId = "T-5001",
+                CardNumber = "4222222222222222",
+                LocationCode = "STO-30",
+                ProductName = "Webcam",
+                Amount = 99.99m,
+                Timestamp = now.AddHours(-30)
+            }
+        ]);
+
+        var result = await fixture.Service.RunOnceAsync();
+
+        Assert.Equal(0, result.Inserted);
+        Assert.Equal(0, result.Updated);
+
+        var stored = await fixture.Db.Transactions.SingleAsync(x => x.TransactionId == "T-5001");
+        Assert.Equal(45.00m, stored.Amount);
+        Assert.True(stored.IsFinalized);
+
+        var revisions = await fixture.Db.TransactionRevisions.ToListAsync();
+        Assert.Empty(revisions);
+    }
+
+    [Fact]
+    public async Task RunOnce_DeduplicatesSnapshot_KeepsEntryWithLatestTimestamp()
+    {
+        var now = new DateTime(2026, 3, 9, 12, 0, 0, DateTimeKind.Utc);
+        await using var fixture = await TestFixture.CreateAsync(new FakeClock(now));
+
+        // Two entries for the same TransactionId — different amounts and timestamps.
+        fixture.SnapshotClient.SetData(
+        [
+            new SnapshotTransaction
+            {
+                TransactionId = "T-6001",
+                CardNumber = "4333333333333333",
+                LocationCode = "STO-40",
+                ProductName = "Monitor",
+                Amount = 199.99m,
+                Timestamp = now.AddHours(-5)   // earlier
+            },
+            new SnapshotTransaction
+            {
+                TransactionId = "T-6001",
+                CardNumber = "4333333333333333",
+                LocationCode = "STO-40",
+                ProductName = "Monitor",
+                Amount = 249.99m,
+                Timestamp = now.AddHours(-1)   // later — this one wins
+            }
+        ]);
+
+        var result = await fixture.Service.RunOnceAsync();
+
+        Assert.Equal(1, result.Inserted);
+
+        var stored = await fixture.Db.Transactions.SingleAsync(x => x.TransactionId == "T-6001");
+        Assert.Equal(249.99m, stored.Amount);
+    }
+
     private sealed class TestFixture : IAsyncDisposable
     {
         private readonly SqliteConnection _connection;

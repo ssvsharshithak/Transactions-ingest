@@ -9,6 +9,9 @@ public sealed class MockSnapshotClient(
     IOptions<IngestionOptions> options,
     ILogger<MockSnapshotClient> logger) : ISnapshotClient
 {
+    private static readonly JsonSerializerOptions JsonOptions =
+        new() { PropertyNameCaseInsensitive = true };
+
     private readonly IngestionOptions _options = options.Value;
     private readonly ILogger<MockSnapshotClient> _logger = logger;
 
@@ -26,7 +29,7 @@ public sealed class MockSnapshotClient(
         await using var stream = File.OpenRead(resolvedPath);
         var snapshot = await JsonSerializer.DeserializeAsync<List<SnapshotTransaction>>(
             stream,
-            new JsonSerializerOptions { PropertyNameCaseInsensitive = true },
+            JsonOptions,
             cancellationToken);
 
         var count = snapshot?.Count ?? 0;

@@ -61,8 +61,8 @@ public sealed class IngestionService(
                 {
                     TransactionId = incoming.TransactionId,
                     CardLast4 = ToLast4(incoming.CardNumber),
-                    LocationCode = Clamp(incoming.LocationCode, 20),
-                    ProductName = Clamp(incoming.ProductName, 20),
+                    LocationCode = Clamp(incoming.LocationCode, 20, nameof(Transaction.LocationCode)),
+                    ProductName = Clamp(incoming.ProductName, 20, nameof(Transaction.ProductName)),
                     Amount = incoming.Amount,
                     TransactionTimeUtc = incoming.Timestamp,
                     IsRevoked = false,
@@ -91,8 +91,8 @@ public sealed class IngestionService(
 
             var changed = false;
             var incomingLast4 = ToLast4(incoming.CardNumber);
-            var incomingLocation = Clamp(incoming.LocationCode, 20);
-            var incomingProduct = Clamp(incoming.ProductName, 20);
+            var incomingLocation = Clamp(incoming.LocationCode, 20, nameof(Transaction.LocationCode));
+            var incomingProduct = Clamp(incoming.ProductName, 20, nameof(Transaction.ProductName));
 
             if (!string.Equals(existing.CardLast4, incomingLast4, StringComparison.Ordinal))
             {
@@ -225,8 +225,8 @@ public sealed class IngestionService(
             }
         }
 
-        await _db.SaveChangesAsync(cancellationToken);
-        await dbTransaction.CommitAsync(cancellationToken);
+        await _db.SaveChangesAsync(CancellationToken.None);
+        await dbTransaction.CommitAsync(CancellationToken.None);
 
         _logger.LogInformation(
             "Processed snapshotCount={SnapshotCount}, inserted={Inserted}, updated={Updated}, revoked={Revoked}, finalized={Finalized}",
@@ -282,13 +282,16 @@ public sealed class IngestionService(
         };
     }
 
-    private static string Clamp(string value, int maxLength)
+    private string Clamp(string value, int maxLength, string fieldName)
     {
         if (value.Length <= maxLength)
         {
             return value;
         }
 
+        _logger.LogWarning(
+            "Field {FieldName} value truncated from {Original} to {MaxLength} characters.",
+            fieldName, value.Length, maxLength);
         return value[..maxLength];
     }
 
