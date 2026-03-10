@@ -19,4 +19,16 @@
 
 ## Tests (`tests/TransactionsIngest.Tests`)
 
-- `IngestionServiceTests.cs` - insert, update/audit, revocation/finalization, idempotency checks.
+- `IngestionServiceTests.cs` - 6 tests covering:
+  - Insert with `Created` revision
+  - Field-level update detection + idempotency
+  - Revocation of missing recent transactions + finalization of old ones
+  - Un-revoke when a previously-revoked transaction reappears
+  - Finalized records are immutable even if they reappear in the snapshot
+  - Snapshot deduplication (latest timestamp wins for duplicate IDs)
+
+## Mock Feed (`mocks/`)
+
+- `transactions.snapshot.json` - 7 transactions used for local runs:
+  - `T-1001` to `T-1009` — recent (within 24h), used to demo insert/update/revoke
+  - `T-OLD1` — timestamp 2 days old, demos insert + immediate finalization in one run
